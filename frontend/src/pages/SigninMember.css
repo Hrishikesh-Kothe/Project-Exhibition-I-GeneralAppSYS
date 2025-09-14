@@ -2,7 +2,7 @@ html, body {
   height: 100%;
   margin: 0;
   padding: 0;
-  background: #f5f6fa;
+  background: #135E4B;
   font-family: 'Segoe UI', Arial, sans-serif;
 }
 
@@ -19,10 +19,9 @@ html, body {
 }
 
 .signin-box {
-  background: #fff;
+  background: #A1D8B5;
   padding: 32px 40px;
-  border-radius: 12px;
-  box-shadow: 0 4px 24px rgba(0,0,0,0.08);
+  border-radius: 15px;  
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -60,11 +59,11 @@ html, body {
 }
 
 .signin-form input:focus {
-  border-color: #0984e3;
+  border-color: #368151;
 }
 
 .signin-btn {
-  background: #0984e3;
+  background: #4CB572;
   color: #fff;
   border: none;
   border-radius: 6px;
@@ -78,11 +77,11 @@ html, body {
 }
 
 .signin-btn:hover {
-  background: #74b9ff;
+  background: #368151;
 }
 
 .link {
-  color: #636e72;
+  color: #371CA4;
   font-size: 0.95rem;
   text-align: center;
   margin-top: 8px;

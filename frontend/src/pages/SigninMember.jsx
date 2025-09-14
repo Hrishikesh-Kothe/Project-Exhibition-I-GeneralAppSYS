@@ -4,7 +4,7 @@ export default function SigninMember() {
   return (
     <div className="signin-page">
       <div className="signin-box">
-        <h2 className="signin-title">Welcome Back</h2>
+        <h2 className="signin-title">Welcome Back Member</h2>
 
         <button className="signin-btn">Sign In</button>
 
