@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { registerUser } from "../api"; // make sure this exists
 import "./SigninMember.css";
 
 export default function SpecialistRegister() {
@@ -6,21 +7,36 @@ export default function SpecialistRegister() {
   const [username, setUsername] = useState("");
   const [email, setEmail] = useState("");
   const [phone, setPhone] = useState("");
-  const [category, setCategory] = useState("");
+  const [category, setCategory] = useState("healthcare");
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
 
-  const handleSubmit = (e) => {
+  const handleSubmit = async (e) => {
     e.preventDefault();
-    console.log("Specialist registering:", {
+
+    if (password !== confirmPassword) {
+      alert("Passwords do not match!");
+      return;
+    }
+
+    const data = {
       name,
       username,
       email,
-      phone,
+      number: phone,
       category,
       password,
-      confirmPassword,
-    });
+      role: "specialist",
+    };
+
+    try {
+      const result = await registerUser(data);
+      console.log(result);
+      alert(result.message || result.error);
+    } catch (error) {
+      console.error("Error registering:", error);
+      alert("Something went wrong. Please try again.");
+    }
   };
 
   return (
@@ -34,6 +50,7 @@ export default function SpecialistRegister() {
             placeholder="Enter your full name"
             value={name}
             onChange={(e) => setName(e.target.value)}
+            required
           />
 
           <label>Username</label>
@@ -42,6 +59,7 @@ export default function SpecialistRegister() {
             placeholder="Choose a username"
             value={username}
             onChange={(e) => setUsername(e.target.value)}
+            required
           />
 
           <label>Email</label>
@@ -50,6 +68,7 @@ export default function SpecialistRegister() {
             placeholder="Enter your email"
             value={email}
             onChange={(e) => setEmail(e.target.value)}
+            required
           />
 
           <label>Phone Number</label>
@@ -71,7 +90,6 @@ export default function SpecialistRegister() {
               fontSize: "1rem",
             }}
           >
-            <option value="">Select category</option>
             <option value="healthcare">Healthcare</option>
             <option value="personal">Personal Care</option>
             <option value="education">Education</option>
@@ -84,6 +102,7 @@ export default function SpecialistRegister() {
             placeholder="Create a password"
             value={password}
             onChange={(e) => setPassword(e.target.value)}
+            required
           />
 
           <label>Confirm Password</label>
@@ -92,6 +111,7 @@ export default function SpecialistRegister() {
             placeholder="Confirm your password"
             value={confirmPassword}
             onChange={(e) => setConfirmPassword(e.target.value)}
+            required
           />
 
           <button type="submit" className="signin-btn">

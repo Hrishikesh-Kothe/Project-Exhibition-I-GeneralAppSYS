@@ -8,7 +8,7 @@ export default function Register() {
   const [confirmPassword, setConfirmPassword] = useState("");
   const [message, setMessage] = useState("");
 
-  const handleRegister = (e) => {
+  const handleRegister = async (e) => {
     e.preventDefault();
 
     if (password !== confirmPassword) {
@@ -16,9 +16,29 @@ export default function Register() {
       return;
     }
 
-    // api call replace here
-    console.log("Registering:", { username, email, password });
-    setMessage("Registration successful (dummy).");
+    const data = { username, email, password, role: "member" };
+
+    try {
+      const response = await fetch("http://localhost:6000/api/register", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(data),
+      });
+
+      const result = await response.json();
+
+      if (response.ok) {
+        setMessage("Registration successful!");
+        console.log(result);
+        // Optionally redirect to login page:
+        // window.location.href = "/login";
+      } else {
+        setMessage(result.error || "Registration failed");
+      }
+    } catch (error) {
+      console.error("Registration error:", error);
+      setMessage("Something went wrong. Please try again.");
+    }
   };
 
   return (
@@ -33,6 +53,7 @@ export default function Register() {
             placeholder="Enter your username"
             value={username}
             onChange={(e) => setUsername(e.target.value)}
+            required
           />
 
           <label>Email</label>
@@ -41,6 +62,7 @@ export default function Register() {
             placeholder="Enter your email"
             value={email}
             onChange={(e) => setEmail(e.target.value)}
+            required
           />
 
           <label>Password</label>
@@ -49,6 +71,7 @@ export default function Register() {
             placeholder="Enter your password"
             value={password}
             onChange={(e) => setPassword(e.target.value)}
+            required
           />
 
           <label>Confirm Password</label>
@@ -57,12 +80,19 @@ export default function Register() {
             placeholder="Confirm your password"
             value={confirmPassword}
             onChange={(e) => setConfirmPassword(e.target.value)}
+            required
           />
 
-          <button type="submit" className="signin-btn">Register</button>
+          <button type="submit" className="signin-btn">
+            Register
+          </button>
         </form>
 
-        {message && <p style={{ marginTop: "10px", color: "red" }}>{message}</p>}
+        {message && (
+          <p style={{ marginTop: "10px", color: message.includes("successful") ? "green" : "red" }}>
+            {message}
+          </p>
+        )}
 
         <p className="link">Already a member? Sign In</p>
       </div>
