@@ -1,110 +1,167 @@
 const express = require('express');
-const router = express.Router();
+const bcrypt = require('bcryptjs');
+const jwt = require('jsonwebtoken');
 const Member = require('../models/Member');
 const Specialist = require('../models/Specialist');
 const Appointment = require('../models/Appointment');
-const confirmBooking = require('../utils/confirmBooking');
 
-// GET /api/members/doctors?category=Cardiology
-router.get('/doctors', async (req, res, next) => {
+const router = express.Router();
+
+// Auth middleware
+const authMiddleware = (req, res, next) => {
+  const token = req.header('Authorization')?.replace('Bearer ', '');
+  if (!token) {
+    return res.status(401).json({ message: 'No token provided' });
+  }
+
   try {
-    const { category, page = 1, limit = 20, search } = req.query;
-    const q = {};
-    if (category) q.category = { $regex: new RegExp(`^${category}$`, 'i') };
-    if (search) q.name = { $regex: new RegExp(search, 'i') };
+    const decoded = jwt.verify(token, 'your-secret-key');
+    req.user = decoded;
+    next();
+  } catch (error) {
+    res.status(401).json({ message: 'Invalid token' });
+  }
+};
 
-    const total = await Specialist.countDocuments(q);
-    const doctors = await Specialist.find(q)
-      .skip((Number(page) - 1) * Number(limit))
-      .limit(Number(limit))
-      .lean();
-
-    res.json({ data: doctors, meta: { total, page: Number(page), limit: Number(limit) } });
-  } catch (err) { next(err); }
-});
-
-// GET /api/members/doctors/:id
-router.get('/doctors/:id', async (req, res, next) => {
+// Register member (for your existing frontend)
+router.post('/register', async (req, res) => {
   try {
-    const doc = await Specialist.findById(req.params.id).lean();
-    if (!doc) return res.status(404).json({ error: 'Doctor not found' });
-    res.json({ data: doc });
-  } catch (err) { next(err); }
-});
-
-// POST /api/members/appointments
-// body: { memberId, specialistId, datetime (ISO), duration?, reason? }
-router.post('/appointments', async (req, res, next) => {
-  try {
-    const { memberId, specialistId, datetime, duration = null, reason } = req.body;
-    if (!memberId || !specialistId || !datetime) {
-      return res.status(400).json({ error: 'memberId, specialistId and datetime are required' });
+    const { name, email, password, phone } = req.body;
+    
+    const existingMember = await Member.findOne({ email });
+    if (existingMember) {
+      return res.status(400).json({ message: 'Member already exists' });
     }
 
-    const member = await Member.findById(memberId);
-    if (!member) return res.status(404).json({ error: 'Member not found' });
+    const hashedPassword = await bcrypt.hash(password, 10);
+    const member = new Member({
+      name,
+      email,
+      password: hashedPassword,
+      phone
+    });
 
-    const specialist = await Specialist.findById(specialistId);
-    if (!specialist) return res.status(404).json({ error: 'Specialist not found' });
+    await member.save();
+    res.status(201).json({ message: 'Member registered successfully' });
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
+});
 
-    const slotDuration = duration || specialist.slotDuration || 30;
-    const apptStart = new Date(datetime);
-    if (isNaN(apptStart)) return res.status(400).json({ error: 'Invalid datetime' });
-    if (apptStart < new Date()) return res.status(400).json({ error: 'Cannot book for past datetime' });
+// Login member (for your existing frontend)
+router.post('/login', async (req, res) => {
+  try {
+    const { email, password } = req.body;
+    
+    const member = await Member.findOne({ email });
+    if (!member) {
+      return res.status(400).json({ message: 'Invalid credentials' });
+    }
 
-    const apptEnd = new Date(apptStart.getTime() + slotDuration * 60000);
+    const isMatch = await bcrypt.compare(password, member.password);
+    if (!isMatch) {
+      return res.status(400).json({ message: 'Invalid credentials' });
+    }
 
-    // Check overlapping appointments for the specialist
-    const overlapping = await Appointment.findOne({
-      specialist: specialist._id,
-      status: { $in: ['pending', 'confirmed'] },
-      $expr: {
-        $and: [
-          { $lt: ['$datetime', apptEnd] }, // existing.start < new.end
-          { $gt: [{ $add: ['$datetime', { $multiply: ['$duration', 60000] }] }, apptStart] } // existing.end > new.start
-        ]
+    const token = jwt.sign(
+      { id: member._id, type: 'member' },
+      'your-secret-key',
+      { expiresIn: '24h' }
+    );
+
+    res.json({
+      token,
+      user: {
+        id: member._id,
+        name: member.name,
+        email: member.email,
+        type: 'member'
       }
     });
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
+});
 
-    if (overlapping) return res.status(409).json({ error: 'Specialist not available at chosen time' });
+// Get specialists by category
+router.get('/specialists/:category', async (req, res) => {
+  try {
+    const { category } = req.params;
+    const specialists = await Specialist.find({ specialty: category }).select('-password');
+    res.json(specialists);
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
+});
 
-    // create appointment (pending by default)
-    const appointment = await Appointment.create({
-      member: member._id,
-      specialist: specialist._id,
-      datetime: apptStart,
-      duration: slotDuration,
-      reason: reason || ''
+// Get specialist details
+router.get('/specialist/:id', async (req, res) => {
+  try {
+    const specialist = await Specialist.findById(req.params.id).select('-password');
+    if (!specialist) {
+      return res.status(404).json({ message: 'Specialist not found' });
+    }
+    res.json(specialist);
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
+});
+
+// Book appointment
+router.post('/book-appointment', authMiddleware, async (req, res) => {
+  try {
+    const { specialistId, date, time } = req.body;
+    
+    const member = await Member.findById(req.user.id);
+    const specialist = await Specialist.findById(specialistId);
+    
+    if (!member || !specialist) {
+      return res.status(404).json({ message: 'Member or Specialist not found' });
+    }
+
+    // Check if slot is available
+    const slotIndex = specialist.availableSlots.findIndex(
+      slot => slot.date === date && slot.time === time && !slot.isBooked
+    );
+    
+    if (slotIndex === -1) {
+      return res.status(400).json({ message: 'Slot not available' });
+    }
+
+    // Mark slot as booked
+    specialist.availableSlots[slotIndex].isBooked = true;
+    await specialist.save();
+
+    // Create appointment
+    const appointment = new Appointment({
+      memberId: member._id,
+      specialistId: specialist._id,
+      memberName: member.name,
+      specialistName: specialist.name,
+      specialty: specialist.specialty,
+      date,
+      time
     });
 
-    // run confirmation logic (auto-confirm if allowed)
-    const confirmation = await confirmBooking(appointment, { member, specialist });
+    await appointment.save();
 
-    // return current appointment state and confirmation info
-    const fresh = await Appointment.findById(appointment._id).lean();
-    res.status(201).json({ appointment: fresh, confirmation });
-  } catch (err) { next(err); }
+    res.json({
+      message: `Appointment booked with Dr. ${specialist.name} for ${date} at ${time}`,
+      appointment
+    });
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
 });
 
-// GET /api/members/appointments/:id
-router.get('/appointments/:id', async (req, res, next) => {
+// Get member's appointments
+router.get('/appointments', authMiddleware, async (req, res) => {
   try {
-    const appt = await Appointment.findById(req.params.id).populate('member specialist').lean();
-    if (!appt) return res.status(404).json({ error: 'Appointment not found' });
-    res.json({ data: appt });
-  } catch (err) { next(err); }
-});
-
-// PUT /api/members/appointments/:id/confirm  (for manual confirmation endpoint)
-router.put('/appointments/:id/confirm', async (req, res, next) => {
-  try {
-    const appt = await Appointment.findById(req.params.id);
-    if (!appt) return res.status(404).json({ error: 'Appointment not found' });
-    appt.status = 'confirmed';
-    appt.autoConfirmed = false;
-    await appt.save();
-    res.json({ message: 'Appointment confirmed', appointment: appt });
-  } catch (err) { next(err); }
+    const appointments = await Appointment.find({ memberId: req.user.id }).sort({ createdAt: -1 });
+    res.json(appointments);
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
 });
 
 module.exports = router;
